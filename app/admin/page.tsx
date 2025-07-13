@@ -6,9 +6,9 @@ import { useRouter } from "next/navigation"
 import { gsap } from "gsap"
 import { AdminHeader } from "@/components/admin/admin-header"
 import { AdminStats } from "@/components/admin/admin-stats"
-import { FeedbackTable } from "@/components/admin/feedback-table"
-import { SentimentChart } from "@/components/admin/sentiment-chart"
-import { RealtimeUpdates } from "@/components/admin/realtime-updates"
+// import { FeedbackTable } from "@/components/admin/feedback-table"
+// import { SentimentChart } from "@/components/admin/sentiment-chart"
+// import { RealtimeUpdates } from "@/components/admin/realtime-updates"
 
 export default function AdminDashboard() {
   const { data: session, status } = useSession()
@@ -137,13 +137,13 @@ export default function AdminDashboard() {
           <div className="admin-content grid lg:grid-cols-3 gap-8">
             {/* Left Column */}
             <div className="lg:col-span-2 space-y-8">
-              <SentimentChart data={feedbackData} />
-              <FeedbackTable data={feedbackData} onUpdate={fetchAdminData} />
+              {/* <SentimentChart data={feedbackData} />
+              <FeedbackTable data={feedbackData} onUpdate={fetchAdminData} /> */}
             </div>
 
             {/* Right Column */}
             <div className="space-y-8">
-              <RealtimeUpdates />
+              {/* <RealtimeUpdates /> */}
             </div>
           </div>
         </main>

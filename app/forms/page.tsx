@@ -1,107 +1,106 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
-import { Button } from "@/components/ui/button"
+import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
+import { gsap } from "gsap"
+import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
+import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+import { Plus, Search, MoreVertical, Edit, Share2, Trash2, Eye, BarChart3 } from "lucide-react"
 import { toast } from "sonner"
-import { Plus, MoreVertical, Edit, Trash2, Copy, Eye, BarChart3, Calendar, Users } from "lucide-react"
 import Link from "next/link"
 
 interface Form {
+  _id: string
   id: string
   title: string
   description: string
+  fields: any[]
+  responses: number
   isActive: boolean
   createdAt: string
-  responses: number
-  fields: any[]
+  updatedAt: string
 }
 
 export default function FormsPage() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  const pageRef = useRef<HTMLDivElement>(null)
   const [forms, setForms] = useState<Form[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState("")
 
   useEffect(() => {
-    if (session?.user?.id) {
-      fetchForms()
+    if (status === "loading") return
+
+    if (status === "unauthenticated") {
+      router.push("/auth/signin?callbackUrl=/forms")
+      return
     }
-  }, [session])
+
+    if (status === "authenticated") {
+      fetchForms()
+
+      // Page entrance animation
+      gsap.fromTo(
+        ".forms-content",
+        { opacity: 0, y: 50 },
+        { opacity: 1, y: 0, duration: 0.8, ease: "power3.out", delay: 0.2 },
+      )
+    }
+  }, [status, router])
 
   const fetchForms = async () => {
     try {
-      const response = await fetch(`/api/forms?userId=${session?.user?.id}`)
+      setLoading(true)
+      const response = await fetch("/api/forms")
       if (response.ok) {
-        const formsData = await response.json()
+        const data = await response.json()
 
-        // Fetch response count for each form
+        // Fetch feedback count for each form
         const formsWithCounts = await Promise.all(
-          formsData.map(async (form: Form) => {
+          data.map(async (form: Form) => {
             try {
-              const countResponse = await fetch(`/api/feedback/count?formId=${form.id}`)
-              if (countResponse.ok) {
-                const countData = await countResponse.json()
+              // Updated API call to get feedback count for specific form
+              const feedbackResponse = await fetch(`/api/feedback/count?formId=${form.id}`)
+              if (feedbackResponse.ok) {
+                const feedbackData = await feedbackResponse.json()
+                console.log(`Form ${form.id} feedback count:`, feedbackData.count)
                 return {
                   ...form,
-                  responses: countData.count || 0,
+                  responses: feedbackData.count || 0,
                 }
+              } else {
+                console.error(`Failed to fetch feedback count for form ${form.id}`)
+                return { ...form, responses: 0 }
               }
-              return { ...form, responses: 0 }
             } catch (error) {
-              console.error(`Error fetching count for form ${form.id}:`, error)
+              console.error(`Error fetching feedback count for form ${form.id}:`, error)
               return { ...form, responses: 0 }
             }
           }),
         )
 
+        console.log("Forms with updated counts:", formsWithCounts)
         setForms(formsWithCounts)
+      } else {
+        toast.error("Failed to fetch forms")
       }
     } catch (error) {
       console.error("Error fetching forms:", error)
-      toast.error("Failed to load forms")
+      toast.error("Error loading forms")
     } finally {
       setLoading(false)
     }
   }
 
-  const toggleFormStatus = async (formId: string, isActive: boolean) => {
-    try {
-      const response = await fetch(`/api/forms/${formId}/toggle`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ isActive }),
-      })
-
-      if (response.ok) {
-        setForms(forms.map((form) => (form.id === formId ? { ...form, isActive } : form)))
-        toast.success(`Form ${isActive ? "activated" : "deactivated"}`)
-      } else {
-        toast.error("Failed to update form status")
-      }
-    } catch (error) {
-      console.error("Error toggling form status:", error)
-      toast.error("Failed to update form status")
-    }
-  }
-
   const deleteForm = async (formId: string) => {
+    if (!confirm("Are you sure you want to delete this form?")) return
+
     try {
       const response = await fetch(`/api/forms/${formId}`, {
         method: "DELETE",
@@ -115,172 +114,232 @@ export default function FormsPage() {
       }
     } catch (error) {
       console.error("Error deleting form:", error)
-      toast.error("Failed to delete form")
+      toast.error("Error deleting form")
+    }
+  }
+
+  const toggleFormStatus = async (formId: string, isActive: boolean) => {
+    try {
+      const response = await fetch(`/api/forms/${formId}/toggle`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !isActive }),
+      })
+
+      if (response.ok) {
+        setForms(forms.map((form) => (form.id === formId ? { ...form, isActive: !isActive } : form)))
+        toast.success(`Form ${!isActive ? "activated" : "deactivated"}`)
+      } else {
+        toast.error("Failed to update form status")
+      }
+    } catch (error) {
+      console.error("Error updating form:", error)
+      toast.error("Error updating form")
     }
   }
 
   const copyFormLink = (formId: string) => {
     const link = `${window.location.origin}/feedback/${formId}`
     navigator.clipboard.writeText(link)
-    toast.success("Form link copied to clipboard")
+    toast.success("Form link copied to clipboard!")
   }
 
-  if (loading) {
+  const filteredForms = forms.filter(
+    (form) =>
+      form.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      form.description.toLowerCase().includes(searchTerm.toLowerCase()),
+  )
+
+  if (status === "loading" || loading) {
     return (
-      <div className="container mx-auto py-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold">My Forms</h1>
-            <p className="text-muted-foreground">Manage your feedback forms</p>
-          </div>
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
+          <div className="text-white text-xl">Loading forms...</div>
         </div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader>
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-20 bg-gray-200 rounded"></div>
-              </CardContent>
-            </Card>
-          ))}
+      </div>
+    )
+  }
+
+  if (status === "unauthenticated") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
+          <div className="text-white text-xl">Redirecting to sign in...</div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto py-8">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">My Forms</h1>
-          <p className="text-muted-foreground">Manage your feedback forms</p>
-        </div>
-        <Link href="/form-builder">
-          <Button>
-            <Plus className="w-4 h-4 mr-2" />
-            Create Form
-          </Button>
-        </Link>
-      </div>
+    <div ref={pageRef} className="min-h-screen bg-gradient-to-br from-gray-900 to-black">
+      <DashboardHeader user={session.user} />
 
-      {forms.length === 0 ? (
-        <Card className="text-center py-12">
-          <CardContent>
-            <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <BarChart3 className="w-12 h-12 text-gray-400" />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="forms-content">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h1 className="text-3xl font-bold text-white mb-2">My Forms</h1>
+              <p className="text-gray-400">Manage and track your feedback forms</p>
             </div>
-            <h3 className="text-lg font-semibold mb-2">No forms yet</h3>
-            <p className="text-muted-foreground mb-4">Create your first feedback form to start collecting responses</p>
             <Link href="/form-builder">
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Create Your First Form
+              <Button className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600">
+                <Plus className="h-4 w-4 mr-2" />
+                Create New Form
               </Button>
             </Link>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {forms.map((form) => (
-            <Card key={form.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg line-clamp-1">{form.title}</CardTitle>
-                    <CardDescription className="line-clamp-2 mt-1">
-                      {form.description || "No description"}
-                    </CardDescription>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => copyFormLink(form.id)}>
-                        <Copy className="w-4 h-4 mr-2" />
-                        Copy Link
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/feedback/${form.id}`}>
-                          <Eye className="w-4 h-4 mr-2" />
-                          Preview
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/analytics?formId=${form.id}`}>
-                          <BarChart3 className="w-4 h-4 mr-2" />
-                          Analytics
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/form-builder?edit=${form.id}`}>
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit
-                        </Link>
-                      </DropdownMenuItem>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Form</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete "{form.title}"? This action cannot be undone and all
-                              responses will be lost.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteForm(form.id)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Users className="w-4 h-4" />
-                      <span>{form.responses} responses</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Calendar className="w-4 h-4" />
-                      <span>{new Date(form.createdAt).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                </div>
+          </div>
 
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Switch checked={form.isActive} onCheckedChange={(checked) => toggleFormStatus(form.id, checked)} />
-                    <span className="text-sm">{form.isActive ? "Active" : "Inactive"}</span>
-                  </div>
-                  <Badge variant={form.isActive ? "default" : "secondary"}>
-                    {form.isActive ? "Collecting" : "Paused"}
-                  </Badge>
+          {/* Search */}
+          <div className="mb-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Input
+                placeholder="Search forms..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 bg-white/10 border-white/20 text-white placeholder-gray-400"
+              />
+            </div>
+          </div>
+
+          {/* Forms Grid */}
+          {filteredForms.length === 0 ? (
+            <Card className="bg-white/5 border-white/10">
+              <CardContent className="p-12 text-center">
+                <div className="text-gray-400 text-lg mb-4">
+                  {forms.length === 0 ? "No forms created yet" : "No forms match your search"}
                 </div>
+                {forms.length === 0 && (
+                  <Link href="/form-builder">
+                    <Button className="bg-gradient-to-r from-purple-500 to-blue-500">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create Your First Form
+                    </Button>
+                  </Link>
+                )}
               </CardContent>
             </Card>
-          ))}
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredForms.map((form) => (
+                <Card
+                  key={form.id}
+                  className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md border border-white/20 hover:border-white/40 transition-all duration-300 group"
+                >
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <CardTitle className="text-white text-lg mb-2 line-clamp-2">{form.title}</CardTitle>
+                        <CardDescription className="text-gray-400 line-clamp-2">{form.description}</CardDescription>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="bg-gray-800 border-gray-700">
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/form-builder?id=${form.id}`)}
+                            className="text-gray-300 hover:text-white hover:bg-gray-700"
+                          >
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => copyFormLink(form.id)}
+                            className="text-gray-300 hover:text-white hover:bg-gray-700"
+                          >
+                            <Share2 className="h-4 w-4 mr-2" />
+                            Copy Link
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => window.open(`/feedback/${form.id}`, "_blank")}
+                            className="text-gray-300 hover:text-white hover:bg-gray-700"
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            Preview
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/forms/${form.id}/analytics`)}
+                            className="text-gray-300 hover:text-white hover:bg-gray-700"
+                          >
+                            <BarChart3 className="h-4 w-4 mr-2" />
+                            Analytics
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => toggleFormStatus(form.id, form.isActive)}
+                            className="text-gray-300 hover:text-white hover:bg-gray-700"
+                          >
+                            {form.isActive ? "Deactivate" : "Activate"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => deleteForm(form.id)}
+                            className="text-red-400 hover:text-red-300 hover:bg-gray-700"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent>
+                    <div className="space-y-4">
+                      {/* Status Badge */}
+                      <div className="flex items-center justify-between">
+                        <Badge className={form.isActive ? "bg-green-500" : "bg-gray-500"}>
+                          {form.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                        <span className="text-sm text-gray-400">{form.fields.length} fields</span>
+                      </div>
+
+                      {/* Stats */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-white">{form.responses}</div>
+                          <div className="text-xs text-gray-400">Responses</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-white">
+                            {new Date(form.createdAt).toLocaleDateString()}
+                          </div>
+                          <div className="text-xs text-gray-400">Created</div>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex space-x-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => router.push(`/form-builder?id=${form.id}`)}
+                          className="flex-1 border-white/20 text-white hover:bg-white/10"
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => copyFormLink(form.id)}
+                          className="flex-1 bg-gradient-to-r from-purple-500 to-blue-500"
+                        >
+                          <Share2 className="h-4 w-4 mr-1" />
+                          Share
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </main>
     </div>
   )
 }

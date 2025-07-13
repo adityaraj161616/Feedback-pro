@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 255 255 255;
+    --foreground: 15 23 42;
+    --card: 255 255 255;
+    --card-foreground: 15 23 42;
+    --popover: 255 255 255;
+    --popover-foreground: 15 23 42;
+    --primary: 59 130 246;
+    --primary-foreground: 255 255 255;
+    --secondary: 241 245 249;
+    --secondary-foreground: 15 23 42;
+    --muted: 241 245 249;
+    --muted-foreground: 100 116 139;
+    --accent: 241 245 249;
+    --accent-foreground: 15 23 42;
+    --destructive: 239 68 68;
+    --destructive-foreground: 255 255 255;
+    --border: 226 232 240;
+    --input: 226 232 240;
+    --ring: 59 130 246;
+    --radius: 0.5rem;
+    --chart-1: 59 130 246;
+    --chart-2: 147 197 253;
+    --chart-3: 30 64 175;
+    --chart-4: 96 165 250;
+    --chart-5: 191 219 254;
+  }
+
+  .dark {
+    --background: 2 6 23;
+    --foreground: 248 250 252;
+    --card: 2 6 23;
+    --card-foreground: 248 250 252;
+    --popover: 2 6 23;
+    --popover-foreground: 248 250 252;
+    --primary: 59 130 246;
+    --primary-foreground: 255 255 255;
+    --secondary: 30 41 59;
+    --secondary-foreground: 248 250 252;
+    --muted: 30 41 59;
+    --muted-foreground: 148 163 184;
+    --accent: 30 41 59;
+    --accent-foreground: 248 250 252;
+    --destructive: 239 68 68;
+    --destructive-foreground: 248 250 252;
+    --border: 30 41 59;
+    --input: 30 41 59;
+    --ring: 59 130 246;
+    --chart-1: 59 130 246;
+    --chart-2: 147 197 253;
+    --chart-3: 30 64 175;
+    --chart-4: 96 165 250;
+    --chart-5: 191 219 254;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .animate-fadeIn {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(59, 130, 246, 0.5);
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Magnetic button base styles */
+.magnetic-btn {
+  transition: transform 0.3s ease;
+}
+
+/* Blue gradient backgrounds */
+.bg-gradient-blue {
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
+}
+
+.bg-gradient-blue-light {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 50%, #93c5fd 100%);
+}

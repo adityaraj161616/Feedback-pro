@@ -28,7 +28,6 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "d3": "^7.9.0",
-    "d3-cloud": "^1.2.7",
     "express-rate-limit": "^7.2.0",
     "gsap": "^3.12.5",
     "jspdf": "^2.5.1",
@@ -51,7 +50,6 @@
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",
-    "@types/d3-cloud": "^1.2.10",
     "@types/node": "^20.12.5",
     "@types/nodemailer": "^6.4.14",
     "@types/qrcode": "^1.5.5",

@@ -1,225 +1,395 @@
 import { type NextRequest, NextResponse } from "next/server"
-import clientPromise from "@/lib/mongodb"
-import { analyzeSentiment } from "@/lib/ai-sentiment"
-import { logAudit } from "@/lib/audit"
-import type { AnalyticsData } from "@/lib/types"
+import { getServerSession } from "next-auth/next"
+import { authOptions } from "@/app/api/auth/[...nextauth]/route"
+import { connectToDatabase } from "@/lib/mongodb"
+import { analyzeSentimentWithAI } from "@/lib/ai-sentiment"
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get("userId")
     const formId = searchParams.get("formId")
 
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized: User ID required" }, { status: 401 })
-    }
+    console.log("Analytics request:", { userId, formId, sessionUserId: session.user.id })
 
-    const db = (await clientPromise).db("feedbackpro")
-    const feedbackCollection = db.collection("feedback")
-    const formsCollection = db.collection("forms")
+    const { db } = await connectToDatabase()
 
-    // Base query for feedback and forms
-    const feedbackQuery: any = { userId: userId }
-    const formsQuery: any = { userId: userId }
-
+    // Build query for feedback
+    const feedbackQuery: any = { userId: session.user.id }
     if (formId && formId !== "all") {
       feedbackQuery.formId = formId
-      formsQuery.id = formId // Filter forms by ID if a specific form is selected
     }
 
-    // Fetch feedback entries
-    const feedbackEntries = await feedbackCollection.find(feedbackQuery).sort({ createdAt: 1 }).toArray()
+    console.log("Feedback query:", feedbackQuery)
 
-    // Fetch forms
-    const userForms = await formsCollection.find(formsQuery).toArray()
+    // Get all feedback for this user
+    const feedback = await db.collection("feedback").find(feedbackQuery).toArray()
+    console.log(`Found ${feedback.length} feedback entries`)
 
-    // Initialize analytics data structure with defaults
-    const analytics: AnalyticsData = {
-      overview: {
-        totalFeedback: 0,
-        averageSentimentScore: 0,
-        formsCreated: userForms.length,
-        activeForms: userForms.filter((form) => form.isActive).length,
-      },
-      feedbackTrends: [],
-      sentimentTrends: [],
-      formPerformance: [],
-      aiInsights: {
-        recommendations: [],
-        topKeywords: [],
-        emergingTrends: [],
-        emotionAnalysis: {},
-        actionableInsights: [],
-      },
-      sentimentDistribution: {
-        Positive: 0,
-        Neutral: 0,
-        Negative: 0,
-      },
-    }
+    // Get all forms for this user
+    const formsQuery = { userId: session.user.id }
+    const forms = await db.collection("forms").find(formsQuery).toArray()
+    console.log(`Found ${forms.length} forms`)
 
-    // --- Calculate Overview Stats ---
-    analytics.overview.totalFeedback = feedbackEntries.length
+    // Process feedback and analyze sentiment
+    const processedFeedback = []
+    let sentimentAnalysisCount = 0
 
-    let totalSentimentScore = 0
-    feedbackEntries.forEach((entry) => {
-      if (entry.sentiment && typeof entry.sentiment.score === "number") {
-        totalSentimentScore += entry.sentiment.score
-        const label = entry.sentiment.label || "Neutral"
-        analytics.sentimentDistribution[label] = (analytics.sentimentDistribution[label] || 0) + 1
-      }
-    })
-    analytics.overview.averageSentimentScore =
-      feedbackEntries.length > 0 ? totalSentimentScore / feedbackEntries.length : 0
+    for (const item of feedback) {
+      let sentimentData = item.sentiment
 
-    // --- Calculate Feedback Trends (Daily) ---
-    const feedbackCountByDate: { [key: string]: number } = {}
-    feedbackEntries.forEach((entry) => {
-      const date = new Date(entry.createdAt).toISOString().split("T")[0]
-      feedbackCountByDate[date] = (feedbackCountByDate[date] || 0) + 1
-    })
-    analytics.feedbackTrends = Object.entries(feedbackCountByDate)
-      .map(([date, count]) => ({ date, count }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      // If no sentiment data exists, analyze it
+      if (!sentimentData) {
+        console.log(`Analyzing sentiment for feedback ${item._id}`)
+        sentimentAnalysisCount++
 
-    // --- Calculate Sentiment Trends (Daily Average) ---
-    const sentimentByDate: { [key: string]: { sum: number; count: number } } = {}
-    feedbackEntries.forEach((entry) => {
-      const date = new Date(entry.createdAt).toISOString().split("T")[0]
-      if (entry.sentiment && typeof entry.sentiment.score === "number") {
-        sentimentByDate[date] = sentimentByDate[date] || { sum: 0, count: 0 }
-        sentimentByDate[date].sum += entry.sentiment.score
-        sentimentByDate[date].count += 1
-      }
-    })
-    analytics.sentimentTrends = Object.entries(sentimentByDate)
-      .map(([date, data]) => ({ date, averageScore: data.sum / data.count }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        // Extract text and rating from responses
+        const responses = item.responses || {}
+        let textContent = ""
+        let rating = null
 
-    // --- Calculate Sentiment Heatmap Data (Hourly) ---
-    const sentimentHeatmapData: {
-      date: string
-      hourlySentiment: { [hour: string]: number[] }
-    }[] = []
-    const dailyHourlySentiment: {
-      [date: string]: { [hour: string]: { sum: number; count: number } }
-    } = {}
+        console.log("Raw responses:", responses)
 
-    feedbackEntries.forEach((entry) => {
-      const date = new Date(entry.createdAt).toISOString().split("T")[0]
-      const hour = new Date(entry.createdAt).getHours().toString()
-      if (entry.sentiment && typeof entry.sentiment.score === "number") {
-        dailyHourlySentiment[date] = dailyHourlySentiment[date] || {}
-        dailyHourlySentiment[date][hour] = dailyHourlySentiment[date][hour] || { sum: 0, count: 0 }
-        dailyHourlySentiment[date][hour].sum += entry.sentiment.score
-        dailyHourlySentiment[date][hour].count += 1
-      }
-    })
+        // Extract all text content
+        Object.entries(responses).forEach(([key, value]: [string, any]) => {
+          if (typeof value === "string" && value.trim().length > 0) {
+            textContent += value.trim() + " "
+          }
+        })
 
-    for (const date in dailyHourlySentiment) {
-      const hourlySentiment: { [hour: string]: number } = {}
-      for (const hour in dailyHourlySentiment[date]) {
-        const data = dailyHourlySentiment[date][hour]
-        hourlySentiment[hour] = data.sum / data.count
-      }
-      sentimentHeatmapData.push({ date, hourlySentiment })
-    }
-    analytics.sentimentTrends = sentimentHeatmapData.sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    )
+        // Extract rating (look for numeric values that could be ratings)
+        Object.entries(responses).forEach(([key, value]: [string, any]) => {
+          const keyLower = key.toLowerCase()
+          if (keyLower.includes("rating") || keyLower.includes("star") || keyLower.includes("score")) {
+            const numValue = Number.parseInt(value)
+            if (!isNaN(numValue) && numValue >= 1 && numValue <= 5) {
+              rating = numValue
+            }
+          }
+          // Also check if the value itself looks like a rating
+          if (typeof value === "number" && value >= 1 && value <= 5) {
+            rating = value
+          }
+          if (typeof value === "string") {
+            const numValue = Number.parseInt(value)
+            if (!isNaN(numValue) && numValue >= 1 && numValue <= 5) {
+              rating = numValue
+            }
+          }
+        })
 
-    // --- Calculate Form Performance ---
-    const formFeedbackCounts: { [formId: string]: { total: number; sentimentSum: number; count: number } } = {}
-    feedbackEntries.forEach((entry) => {
-      formFeedbackCounts[entry.formId] = formFeedbackCounts[entry.formId] || { total: 0, sentimentSum: 0, count: 0 }
-      formFeedbackCounts[entry.formId].total += 1
-      if (entry.sentiment && typeof entry.sentiment.score === "number") {
-        formFeedbackCounts[entry.formId].sentimentSum += entry.sentiment.score
-        formFeedbackCounts[entry.formId].count += 1
-      }
-    })
+        console.log("Extracted content:", {
+          textContent: textContent.trim(),
+          rating,
+          responseKeys: Object.keys(responses),
+        })
 
-    analytics.formPerformance = userForms.map((form) => {
-      const stats = formFeedbackCounts[form.id] || { total: 0, sentimentSum: 0, count: 0 }
-      return {
-        id: form.id,
-        title: form.title,
-        totalFeedback: stats.total,
-        averageSentimentScore: stats.count > 0 ? stats.sentimentSum / stats.count : 0,
-      }
-    })
+        try {
+          sentimentData = await analyzeSentimentWithAI(textContent.trim(), rating)
+          console.log("Generated sentiment:", sentimentData)
 
-    // --- AI Insights (only if a specific form or overall insights are requested) ---
-    // This part can be resource-intensive, consider caching or running less frequently
-    const allFeedbackTextForAI = feedbackEntries
-      .flatMap((entry) =>
-        Object.values(entry.responses || {}).filter((val) => typeof val === "string" && val.length > 0),
-      )
-      .join(". ")
-
-    if (allFeedbackTextForAI) {
-      const aiAnalysisResult = await analyzeSentiment(allFeedbackTextForAI)
-      analytics.aiInsights.topKeywords = aiAnalysisResult.keywords
-      analytics.aiInsights.emotionAnalysis = aiAnalysisResult.emotions.reduce((acc: any, emotion: string) => {
-        acc[emotion] = (acc[emotion] || 0) + 1
-        return acc
-      }, {})
-
-      // Simple recommendations based on overall sentiment
-      if (aiAnalysisResult.label === "Negative" && aiAnalysisResult.score < 0.4) {
-        analytics.aiInsights.recommendations.push(
-          "High negative sentiment detected. Prioritize reviewing recent feedback for critical issues.",
-        )
-        analytics.aiInsights.actionableInsights.push(
-          "Conduct a deep dive into common themes in negative feedback to identify root causes.",
-        )
-      } else if (aiAnalysisResult.label === "Positive" && aiAnalysisResult.score > 0.6) {
-        analytics.aiInsights.recommendations.push(
-          "Strong positive sentiment! Identify what's working well and consider promoting these aspects.",
-        )
-        analytics.aiInsights.actionableInsights.push(
-          "Gather testimonials from positive feedback and use them in marketing materials.",
-        )
-      } else {
-        analytics.aiInsights.recommendations.push(
-          "Sentiment is neutral or mixed. Look for specific keywords and emotions to find areas for improvement.",
-        )
-      }
-
-      // Basic emerging trends (e.g., keywords appearing more frequently recently)
-      const recentKeywords = feedbackEntries
-        .slice(0, Math.min(10, feedbackEntries.length)) // Last 10 feedbacks
-        .flatMap((entry) => entry.sentiment?.keywords || [])
-        .reduce((acc: any, keyword: string) => {
-          acc[keyword] = (acc[keyword] || 0) + 1
-          return acc
-        }, {})
-
-      for (const keyword in recentKeywords) {
-        if (recentKeywords[keyword] > 1 && !analytics.aiInsights.topKeywords.includes(keyword)) {
-          // If appears more than once recently and not already a top keyword
-          analytics.aiInsights.emergingTrends.push(`Increased mentions of "${keyword}" in recent feedback.`)
+          // Update database with sentiment
+          await db.collection("feedback").updateOne({ _id: item._id }, { $set: { sentiment: sentimentData } })
+        } catch (error) {
+          console.error("Error analyzing sentiment:", error)
+          // Use fallback sentiment
+          sentimentData = {
+            label: "Neutral",
+            score: 0.5,
+            emoji: "😐",
+            keywords: [],
+            emotions: [],
+            confidence: 0.3,
+          }
         }
       }
+
+      processedFeedback.push({
+        ...item,
+        sentiment: sentimentData,
+      })
     }
 
-    await logAudit({
-      action: "Analytics Viewed",
-      userId: userId,
-      resourceType: "analytics",
-      resourceId: formId || "all",
-      details: { formId, feedbackCount: feedbackEntries.length },
-    })
+    console.log(
+      `Processed ${processedFeedback.length} feedback entries, analyzed ${sentimentAnalysisCount} new entries`,
+    )
+
+    // Calculate analytics
+    const analytics = calculateAnalytics(processedFeedback, forms)
+    console.log("Final analytics:", JSON.stringify(analytics, null, 2))
 
     return NextResponse.json(analytics)
   } catch (error) {
-    console.error("Error fetching analytics data:", error)
-    await logAudit({
-      action: "Analytics Fetch Failed",
-      userId: request.searchParams.get("userId") || "unknown",
-      details: { error: error.message, formId: request.searchParams.get("formId") },
-      severity: "high",
-    })
-    return NextResponse.json({ error: "Failed to fetch analytics data" }, { status: 500 })
+    console.error("Analytics API error:", error)
+    return NextResponse.json(
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
+}
+
+function calculateAnalytics(feedback: any[], forms: any[]) {
+  const totalFeedback = feedback.length
+  const activeForms = forms.filter((form) => form.isActive !== false).length
+  const formsCreated = forms.length
+
+  console.log("Calculating analytics for:", { totalFeedback, activeForms, formsCreated })
+
+  // Calculate sentiment distribution
+  const sentimentCounts = {
+    Positive: 0,
+    Neutral: 0,
+    Negative: 0,
+  }
+
+  let totalSentimentScore = 0
+  const allKeywords: string[] = []
+  const allEmotions: string[] = []
+  const confidenceScores: number[] = []
+
+  feedback.forEach((item) => {
+    if (item.sentiment) {
+      sentimentCounts[item.sentiment.label]++
+      totalSentimentScore += item.sentiment.score
+
+      if (item.sentiment.keywords && Array.isArray(item.sentiment.keywords)) {
+        allKeywords.push(...item.sentiment.keywords)
+      }
+      if (item.sentiment.emotions && Array.isArray(item.sentiment.emotions)) {
+        allEmotions.push(...item.sentiment.emotions)
+      }
+      if (typeof item.sentiment.confidence === "number") {
+        confidenceScores.push(item.sentiment.confidence)
+      }
+    }
+  })
+
+  const averageSentimentScore = totalFeedback > 0 ? totalSentimentScore / totalFeedback : 0
+  const averageConfidence =
+    confidenceScores.length > 0 ? confidenceScores.reduce((a, b) => a + b, 0) / confidenceScores.length : 0
+
+  console.log("Sentiment analysis:", {
+    sentimentCounts,
+    averageSentimentScore,
+    averageConfidence,
+    totalKeywords: allKeywords.length,
+    totalEmotions: allEmotions.length,
+  })
+
+  // Calculate trends
+  const feedbackTrends = calculateFeedbackTrends(feedback)
+  const sentimentTrends = calculateSentimentTrends(feedback)
+
+  // Form performance
+  const formPerformance = forms.map((form) => {
+    const formFeedback = feedback.filter((f) => f.formId === form._id.toString())
+    const formSentimentScore =
+      formFeedback.length > 0
+        ? formFeedback.reduce((sum, f) => sum + (f.sentiment?.score || 0.5), 0) / formFeedback.length
+        : 0
+
+    return {
+      id: form._id.toString(),
+      title: form.title || "Untitled Form",
+      totalFeedback: formFeedback.length,
+      averageSentimentScore: formSentimentScore,
+    }
+  })
+
+  // AI Insights
+  const topKeywords = getTopItems(allKeywords, 10)
+  const topEmotions = getTopItems(allEmotions, 8)
+  const recommendations = generateRecommendations(sentimentCounts, averageSentimentScore, totalFeedback)
+
+  // Create emotion analysis object
+  const emotionAnalysis: { [key: string]: number } = {}
+  topEmotions.forEach((emotion, index) => {
+    // Calculate percentage based on frequency and position
+    const frequency = allEmotions.filter((e) => e === emotion).length
+    const percentage = totalFeedback > 0 ? (frequency / totalFeedback) * 100 : 0
+    emotionAnalysis[emotion] = Math.min(100, percentage * (1 + (topEmotions.length - index) * 0.1))
+  })
+
+  const analytics = {
+    overview: {
+      totalFeedback,
+      averageSentimentScore,
+      formsCreated,
+      activeForms,
+    },
+    feedbackTrends,
+    sentimentTrends,
+    formPerformance,
+    sentimentDistribution: sentimentCounts,
+    aiInsights: {
+      recommendations,
+      topKeywords,
+      emergingTrends: generateEmergingTrends(feedback),
+      emotionAnalysis,
+      actionableInsights: generateActionableInsights(sentimentCounts, averageSentimentScore, topKeywords),
+      averageConfidence,
+      totalAnalyzed: feedback.filter((f) => f.sentiment).length,
+    },
+  }
+
+  return analytics
+}
+
+function calculateFeedbackTrends(feedback: any[]) {
+  const trends: { [date: string]: number } = {}
+
+  feedback.forEach((item) => {
+    const date = new Date(item.createdAt || item.submittedAt || Date.now()).toISOString().split("T")[0]
+    trends[date] = (trends[date] || 0) + 1
+  })
+
+  return Object.entries(trends)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, count]) => ({ date, count }))
+}
+
+function calculateSentimentTrends(feedback: any[]) {
+  const trends: { [date: string]: { total: number; sum: number } } = {}
+
+  feedback.forEach((item) => {
+    if (item.sentiment) {
+      const date = new Date(item.createdAt || item.submittedAt || Date.now()).toISOString().split("T")[0]
+      if (!trends[date]) {
+        trends[date] = { total: 0, sum: 0 }
+      }
+      trends[date].total++
+      trends[date].sum += item.sentiment.score
+    }
+  })
+
+  return Object.entries(trends)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, data]) => ({
+      date,
+      averageScore: data.total > 0 ? data.sum / data.total : 0,
+    }))
+}
+
+function getTopItems(items: string[], limit: number): string[] {
+  const counts: { [key: string]: number } = {}
+  items.forEach((item) => {
+    if (item && typeof item === "string") {
+      counts[item] = (counts[item] || 0) + 1
+    }
+  })
+
+  return Object.entries(counts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, limit)
+    .map(([item]) => item)
+}
+
+function generateRecommendations(sentimentCounts: any, averageScore: number, totalFeedback: number): string[] {
+  const recommendations = []
+
+  if (totalFeedback === 0) {
+    recommendations.push("Start collecting feedback to get meaningful insights and improve your services.")
+    return recommendations
+  }
+
+  const negativePercentage = (sentimentCounts.Negative / totalFeedback) * 100
+  const positivePercentage = (sentimentCounts.Positive / totalFeedback) * 100
+  const neutralPercentage = (sentimentCounts.Neutral / totalFeedback) * 100
+
+  if (negativePercentage > 40) {
+    recommendations.push("⚠️ High negative feedback detected. Immediate action required to address customer concerns.")
+  } else if (negativePercentage > 20) {
+    recommendations.push(
+      "📊 Moderate negative feedback present. Consider reviewing recent changes and customer pain points.",
+    )
+  }
+
+  if (positivePercentage > 70) {
+    recommendations.push(
+      "🎉 Excellent! High positive sentiment. Consider leveraging satisfied customers for testimonials and referrals.",
+    )
+  } else if (positivePercentage > 50) {
+    recommendations.push("👍 Good positive sentiment. Focus on maintaining quality and addressing neutral feedback.")
+  }
+
+  if (neutralPercentage > 50) {
+    recommendations.push(
+      "🔍 High neutral sentiment suggests room for improvement. Engage customers to understand their needs better.",
+    )
+  }
+
+  if (averageScore < 0.3) {
+    recommendations.push("🚨 Critical: Very low sentiment score. Urgent review of products/services needed.")
+  } else if (averageScore < 0.5) {
+    recommendations.push("📉 Below average sentiment. Focus on identifying and resolving key issues.")
+  } else if (averageScore > 0.8) {
+    recommendations.push(
+      "⭐ Outstanding sentiment score! This is an excellent time to expand or promote your offerings.",
+    )
+  }
+
+  if (totalFeedback < 10) {
+    recommendations.push(
+      "📈 Increase feedback collection through surveys, follow-ups, and incentives to get more reliable insights.",
+    )
+  }
+
+  return recommendations
+}
+
+function generateEmergingTrends(feedback: any[]): string[] {
+  const trends = []
+
+  if (feedback.length === 0) return trends
+
+  // Analyze recent vs older feedback
+  const now = new Date()
+  const recentFeedback = feedback.filter((f) => {
+    const feedbackDate = new Date(f.createdAt || f.submittedAt || now)
+    const daysDiff = (now.getTime() - feedbackDate.getTime()) / (1000 * 3600 * 24)
+    return daysDiff <= 7
+  })
+
+  if (recentFeedback.length > 0) {
+    const recentPositive = recentFeedback.filter((f) => f.sentiment?.label === "Positive").length
+    const recentPositivePercentage = (recentPositive / recentFeedback.length) * 100
+
+    if (recentPositivePercentage > 70) {
+      trends.push("📈 Recent feedback shows improving sentiment")
+    } else if (recentPositivePercentage < 30) {
+      trends.push("📉 Recent feedback shows declining sentiment")
+    }
+  }
+
+  return trends
+}
+
+function generateActionableInsights(sentimentCounts: any, averageScore: number, topKeywords: string[]): string[] {
+  const insights = []
+
+  if (sentimentCounts.Negative > 0) {
+    insights.push(`Address ${sentimentCounts.Negative} negative feedback items to improve overall satisfaction`)
+  }
+
+  if (topKeywords.length > 0) {
+    insights.push(`Focus on keywords: ${topKeywords.slice(0, 3).join(", ")} - these appear frequently in feedback`)
+  }
+
+  if (averageScore > 0.7) {
+    insights.push("Leverage high satisfaction scores in marketing materials and case studies")
+  }
+
+  if (sentimentCounts.Neutral > sentimentCounts.Positive) {
+    insights.push("Convert neutral customers to promoters through targeted engagement and improvements")
+  }
+
+  return insights
 }

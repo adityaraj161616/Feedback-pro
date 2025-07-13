@@ -17,12 +17,12 @@ import { Bell, Settings, LogOut, Plus, Zap } from "lucide-react"
 import Link from "next/link"
 
 interface DashboardHeaderProps {
-  user: {
+  user?: {
     name?: string | null
     email?: string | null
     image?: string | null
     role?: string
-  }
+  } | null
 }
 
 export function DashboardHeader({ user }: DashboardHeaderProps) {
@@ -70,7 +70,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
             <Link href="/analytics" className="text-gray-300 hover:text-white transition-colors">
               Analytics
             </Link>
-            {user.role === "admin" && (
+            {user?.role === "admin" && (
               <Link href="/admin" className="text-gray-300 hover:text-white transition-colors">
                 Admin
               </Link>
@@ -99,38 +99,40 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
             </Button>
 
             {/* User Menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={user.image || ""} alt={user.name || ""} />
-                    <AvatarFallback className="bg-gradient-to-r from-purple-500 to-blue-500 text-white">
-                      {user.name?.charAt(0) || "U"}
-                    </AvatarFallback>
-                  </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56 bg-gray-900 border-gray-700" align="end" forceMount>
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none text-white">{user.name}</p>
-                    <p className="text-xs leading-none text-gray-400">{user.email}</p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator className="bg-gray-700" />
-                <DropdownMenuItem className="text-gray-300 hover:text-white hover:bg-gray-800">
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Settings</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-gray-300 hover:text-white hover:bg-gray-800"
-                  onClick={() => signOut({ callbackUrl: "/" })}
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {user && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={user.image || ""} alt={user.name || ""} />
+                      <AvatarFallback className="bg-gradient-to-r from-purple-500 to-blue-500 text-white">
+                        {user.name?.charAt(0) || "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56 bg-gray-900 border-gray-700" align="end" forceMount>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none text-white">{user.name}</p>
+                      <p className="text-xs leading-none text-gray-400">{user.email}</p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator className="bg-gray-700" />
+                  <DropdownMenuItem className="text-gray-300 hover:text-white hover:bg-gray-800">
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>Settings</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-gray-300 hover:text-white hover:bg-gray-800"
+                    onClick={() => signOut({ callbackUrl: "/" })}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
       </div>

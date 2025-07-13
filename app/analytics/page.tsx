@@ -1,408 +1,488 @@
 "use client"
 
-import Link from "next/link"
-
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import {
-  BarChart,
-  LineChart,
-  PieChart,
-  Bar,
-  Line,
-  Pie,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  Cell,
-} from "recharts"
-import { LayoutDashboard, FormInput, MessageSquare, TrendingUp, Download, Zap } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { AiInsights } from "@/components/analytics/ai-insights"
 import { WordCloud } from "@/components/analytics/word-cloud"
 import { SentimentHeatmap } from "@/components/analytics/sentiment-heatmap"
 import { ExportModal } from "@/components/export/export-modal"
-import type { AnalyticsData, FormEntry } from "@/lib/types"
-
-const COLORS = ["#8884d8", "#82ca9d", "#ffc658", "#ff7300", "#0088FE", "#00C49F", "#FFBB28", "#FF8042"]
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts"
+import {
+  TrendingUp,
+  Users,
+  MessageSquare,
+  Star,
+  Download,
+  RefreshCw,
+  BarChart3,
+  Brain,
+  Calendar,
+  Target,
+} from "lucide-react"
+import type { AnalyticsData } from "@/lib/types"
 
 export default function AnalyticsPage() {
-  const { data: session, status } = useSession()
-  const userId = session?.user?.id
-  const [analytics, setAnalytics] = useState<AnalyticsData>({
-    overview: {
-      totalFeedback: 0,
-      averageSentimentScore: 0,
-      formsCreated: 0,
-      activeForms: 0,
-    },
-    feedbackTrends: [],
-    sentimentTrends: [],
-    formPerformance: [],
-    aiInsights: {
-      recommendations: [],
-      topKeywords: [],
-      emergingTrends: [],
-      emotionAnalysis: {},
-      actionableInsights: [],
-    },
-    sentimentDistribution: {
-      Positive: 0,
-      Neutral: 0,
-      Negative: 0,
-    },
-  })
-  const [forms, setForms] = useState<FormEntry[]>([])
-  const [selectedFormId, setSelectedFormId] = useState<string>("all")
+  const { data: session } = useSession()
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
+  const [forms, setForms] = useState<any[]>([])
+  const [selectedForm, setSelectedForm] = useState<string>("all")
   const [loading, setLoading] = useState(true)
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
 
   useEffect(() => {
-    if (status === "authenticated" && userId) {
+    if (session?.user?.id) {
       fetchForms()
       fetchAnalytics()
-    } else if (status === "unauthenticated") {
-      setLoading(false)
     }
-  }, [status, userId, selectedFormId])
+  }, [session?.user?.id, selectedForm])
 
   const fetchForms = async () => {
     try {
-      const response = await fetch(`/api/forms?userId=${userId}`)
+      const response = await fetch(`/api/forms?userId=${session?.user?.id}`)
       if (response.ok) {
         const data = await response.json()
-        setForms(data.forms || []) // Ensure it's an array
-      } else {
-        console.error("Failed to fetch forms")
-        setForms([])
+        setForms(data)
       }
     } catch (error) {
       console.error("Error fetching forms:", error)
-      setForms([])
     }
   }
 
   const fetchAnalytics = async () => {
-    setLoading(true)
-    try {
-      const queryParams = new URLSearchParams()
-      if (userId) queryParams.append("userId", userId)
-      if (selectedFormId !== "all") queryParams.append("formId", selectedFormId)
+    if (!session?.user?.id) return
 
-      const response = await fetch(`/api/analytics?${queryParams.toString()}`)
+    try {
+      setRefreshing(true)
+      const url = `/api/analytics?userId=${session.user.id}&formId=${selectedForm}`
+      console.log("Fetching analytics from:", url)
+
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
+        console.log("Analytics data received:", data)
         setAnalytics(data)
       } else {
-        console.error("Failed to fetch analytics")
-        // Set default empty analytics data on error
-        setAnalytics({
-          overview: {
-            totalFeedback: 0,
-            averageSentimentScore: 0,
-            formsCreated: 0,
-            activeForms: 0,
-          },
-          feedbackTrends: [],
-          sentimentTrends: [],
-          formPerformance: [],
-          aiInsights: {
-            recommendations: [],
-            topKeywords: [],
-            emergingTrends: [],
-            emotionAnalysis: {},
-            actionableInsights: [],
-          },
-          sentimentDistribution: {
-            Positive: 0,
-            Neutral: 0,
-            Negative: 0,
-          },
-        })
+        console.error("Failed to fetch analytics:", response.status)
       }
     } catch (error) {
       console.error("Error fetching analytics:", error)
-      // Set default empty analytics data on error
-      setAnalytics({
-        overview: {
-          totalFeedback: 0,
-          averageSentimentScore: 0,
-          formsCreated: 0,
-          activeForms: 0,
-        },
-        feedbackTrends: [],
-        sentimentTrends: [],
-        formPerformance: [],
-        aiInsights: {
-          recommendations: [],
-          topKeywords: [],
-          emergingTrends: [],
-          emotionAnalysis: {},
-          actionableInsights: [],
-        },
-        sentimentDistribution: {
-          Positive: 0,
-          Neutral: 0,
-          Negative: 0,
-        },
-      })
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }
 
-  const currentFormUrl =
-    selectedFormId !== "all" ? `${process.env.NEXT_PUBLIC_APP_URL}/feedback/${selectedFormId}` : undefined
-
-  if (status === "loading" || loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white">
-        <div className="text-xl">Loading analytics...</div>
-      </div>
-    )
+  const handleRefresh = () => {
+    fetchAnalytics()
   }
 
-  if (status === "unauthenticated") {
+  if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white">
-        <Card className="bg-white/10 backdrop-blur-md border border-white/20 p-8 text-center">
-          <CardContent>
-            <h1 className="text-2xl font-bold text-white mb-4">Access Denied</h1>
-            <p className="text-gray-300 mb-6">Please sign in to view your analytics dashboard.</p>
-            <Link href="/auth/signin">
-              <Button className="bg-gradient-to-r from-purple-500 to-blue-500">Sign In</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-6 text-white">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-4xl font-bold text-white flex items-center gap-3">
-          <LayoutDashboard className="h-9 w-9 text-blue-400" /> Analytics Dashboard
-        </h1>
-        <div className="flex items-center gap-3">
-          <Select value={selectedFormId} onValueChange={setSelectedFormId}>
-            <SelectTrigger className="w-[200px] bg-white/10 border-white/20 text-white">
-              <SelectValue placeholder="Select Form" />
-            </SelectTrigger>
-            <SelectContent className="bg-gray-800 text-white border-gray-700">
-              <SelectItem value="all">All Forms</SelectItem>
-              {forms.map((form) => (
-                <SelectItem key={form.id} value={form.id}>
-                  {form.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            onClick={() => setIsExportModalOpen(true)}
-            className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
-          >
-            <Download className="mr-2 h-4 w-4" /> Export & Integrations
-          </Button>
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900">
+        <DashboardHeader />
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-white text-xl">Loading analytics...</div>
+          </div>
         </div>
       </div>
+    )
+  }
 
-      {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <Card className="bg-gradient-to-br from-blue-600/40 to-blue-800/40 backdrop-blur-md border border-blue-500/50 shadow-lg">
-          <CardContent className="p-6 flex items-center justify-between">
-            <div>
-              <p className="text-gray-200 text-sm">Total Feedback</p>
-              <p className="text-3xl font-bold text-white">{analytics.overview.totalFeedback}</p>
-            </div>
-            <div className="p-3 bg-blue-500 rounded-lg">
-              <MessageSquare className="h-6 w-6 text-white" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-purple-600/40 to-purple-800/40 backdrop-blur-md border border-purple-500/50 shadow-lg">
-          <CardContent className="p-6 flex items-center justify-between">
-            <div>
-              <p className="text-gray-200 text-sm">Avg. Sentiment Score</p>
-              <p className="text-3xl font-bold text-white">
-                {(analytics.overview.averageSentimentScore * 100).toFixed(1)}%
-              </p>
-            </div>
-            <div className="p-3 bg-purple-500 rounded-lg">
-              <TrendingUp className="h-6 w-6 text-white" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-green-600/40 to-green-800/40 backdrop-blur-md border border-green-500/50 shadow-lg">
-          <CardContent className="p-6 flex items-center justify-between">
-            <div>
-              <p className="text-gray-200 text-sm">Forms Created</p>
-              <p className="text-3xl font-bold text-white">{analytics.overview.formsCreated}</p>
-            </div>
-            <div className="p-3 bg-green-500 rounded-lg">
-              <FormInput className="h-6 w-6 text-white" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-orange-600/40 to-orange-800/40 backdrop-blur-md border border-orange-500/50 shadow-lg">
-          <CardContent className="p-6 flex items-center justify-between">
-            <div>
-              <p className="text-gray-200 text-sm">Active Forms</p>
-              <p className="text-3xl font-bold text-white">{analytics.overview.activeForms}</p>
-            </div>
-            <div className="p-3 bg-orange-500 rounded-lg">
-              <Zap className="h-6 w-6 text-white" />
-            </div>
-          </CardContent>
-        </Card>
+  if (!analytics) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900">
+        <DashboardHeader />
+        <div className="container mx-auto px-4 py-8">
+          <div className="text-center text-white">
+            <h2 className="text-2xl font-bold mb-4">No Analytics Data</h2>
+            <p>Unable to load analytics data. Please try again.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const COLORS = ["#10B981", "#F59E0B", "#EF4444"]
+
+  const pieChartData = [
+    { name: "Positive", value: analytics.sentimentDistribution.Positive, color: "#10B981" },
+    { name: "Neutral", value: analytics.sentimentDistribution.Neutral, color: "#F59E0B" },
+    { name: "Negative", value: analytics.sentimentDistribution.Negative, color: "#EF4444" },
+  ].filter((item) => item.value > 0)
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900">
+      {/* Background Elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute top-20 left-20 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
       </div>
 
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 bg-white/10 text-white border-b border-white/20">
-          <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-            Overview
-          </TabsTrigger>
-          <TabsTrigger value="trends" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-            Trends
-          </TabsTrigger>
-          <TabsTrigger value="ai-insights" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-            AI Insights
-          </TabsTrigger>
-          <TabsTrigger value="performance" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-            Form Performance
-          </TabsTrigger>
-        </TabsList>
+      <DashboardHeader />
 
-        <TabsContent value="overview" className="mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 backdrop-blur-md border border-purple-700/30 text-white">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold text-white">Feedback Volume Over Time</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={analytics.feedbackTrends}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="date" stroke="#ccc" />
-                    <YAxis stroke="#ccc" />
-                    <Tooltip
-                      contentStyle={{ background: "#333", border: "none", borderRadius: "8px" }}
-                      itemStyle={{ color: "#fff" }}
-                    />
-                    <Legend />
-                    <Line type="monotone" dataKey="count" stroke="#8884d8" activeDot={{ r: 8 }} name="Feedback Count" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 backdrop-blur-md border border-purple-700/30 text-white">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold text-white">Sentiment Distribution</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={Object.entries(analytics.sentimentDistribution).map(([name, value]) => ({ name, value }))}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="value"
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    >
-                      {Object.entries(analytics.sentimentDistribution).map(([name, value], index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ background: "#333", border: "none", borderRadius: "8px" }}
-                      itemStyle={{ color: "#fff" }}
-                    />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+      <div className="relative z-10 container mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+          <div>
+            <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-3">
+              <BarChart3 className="h-10 w-10 text-blue-400" />
+              Analytics Dashboard
+            </h1>
+            <p className="text-blue-200">Comprehensive insights into your feedback data</p>
           </div>
-        </TabsContent>
 
-        <TabsContent value="trends" className="mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 backdrop-blur-md border border-purple-700/30 text-white">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold text-white">Average Sentiment Over Time</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={analytics.sentimentTrends}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="date" stroke="#ccc" />
-                    <YAxis domain={[0, 1]} stroke="#ccc" />
-                    <Tooltip
-                      contentStyle={{ background: "#333", border: "none", borderRadius: "8px" }}
-                      itemStyle={{ color: "#fff" }}
-                      formatter={(value: number) => `${(value * 100).toFixed(1)}%`}
-                    />
-                    <Legend />
-                    <Line type="monotone" dataKey="averageScore" stroke="#82ca9d" name="Avg. Sentiment Score" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-            <SentimentHeatmap analytics={analytics} />
+          <div className="flex items-center gap-4 mt-4 md:mt-0">
+            <Select value={selectedForm} onValueChange={setSelectedForm}>
+              <SelectTrigger className="w-48 bg-white/10 border-white/20 text-white">
+                <SelectValue placeholder="Select form" />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-800 border-gray-700">
+                <SelectItem value="all" className="text-white">
+                  All Forms
+                </SelectItem>
+                {forms.map((form) => (
+                  <SelectItem key={form.id} value={form.id} className="text-white">
+                    {form.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              variant="outline"
+              className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+
+            <Button
+              onClick={() => setShowExportModal(true)}
+              className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
           </div>
-        </TabsContent>
+        </div>
 
-        <TabsContent value="ai-insights" className="mt-6">
-          <div className="grid grid-cols-1 gap-6">
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="bg-white/10 border border-white/20">
+            <TabsTrigger value="overview" className="data-[state=active]:bg-blue-500/30">
+              <Target className="h-4 w-4 mr-2" />
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="trends" className="data-[state=active]:bg-blue-500/30">
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Trends
+            </TabsTrigger>
+            <TabsTrigger value="insights" className="data-[state=active]:bg-blue-500/30">
+              <Brain className="h-4 w-4 mr-2" />
+              AI Insights
+            </TabsTrigger>
+            <TabsTrigger value="performance" className="data-[state=active]:bg-blue-500/30">
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Performance
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="space-y-6">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <Card className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md border border-white/20">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-blue-200">Total Feedback</CardTitle>
+                  <MessageSquare className="h-4 w-4 text-blue-400" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-white">{analytics.overview.totalFeedback}</div>
+                  <p className="text-xs text-blue-300">Across all forms</p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md border border-white/20">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-blue-200">Avg Sentiment</CardTitle>
+                  <Star className="h-4 w-4 text-yellow-400" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-white">
+                    {(analytics.overview.averageSentimentScore * 5).toFixed(1)}/5
+                  </div>
+                  <p className="text-xs text-blue-300">Overall satisfaction</p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md border border-white/20">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-blue-200">Active Forms</CardTitle>
+                  <Users className="h-4 w-4 text-green-400" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-white">{analytics.overview.activeForms}</div>
+                  <p className="text-xs text-blue-300">Currently collecting feedback</p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md border border-white/20">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-blue-200">Total Forms</CardTitle>
+                  <Calendar className="h-4 w-4 text-purple-400" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-white">{analytics.overview.formsCreated}</div>
+                  <p className="text-xs text-blue-300">Forms created</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Sentiment Distribution */}
+              <Card className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md border border-white/20">
+                <CardHeader>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Star className="h-5 w-5 text-yellow-400" />
+                    Sentiment Distribution
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {pieChartData.length > 0 ? (
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={pieChartData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={100}
+                            paddingAngle={5}
+                            dataKey="value"
+                          >
+                            {pieChartData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "rgba(0, 0, 0, 0.8)",
+                              border: "1px solid rgba(255, 255, 255, 0.2)",
+                              borderRadius: "8px",
+                              color: "white",
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center text-gray-400">
+                      No sentiment data available
+                    </div>
+                  )}
+
+                  {/* Legend */}
+                  <div className="flex justify-center gap-4 mt-4">
+                    {pieChartData.map((entry, index) => (
+                      <div key={entry.name} className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+                        <span className="text-sm text-gray-300">
+                          {entry.name}: {entry.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Feedback Trends */}
+              <Card className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md border border-white/20">
+                <CardHeader>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-blue-400" />
+                    Feedback Trends
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {analytics.feedbackTrends.length > 0 ? (
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={analytics.feedbackTrends}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                          <XAxis
+                            dataKey="date"
+                            stroke="rgba(255,255,255,0.7)"
+                            fontSize={12}
+                            tickFormatter={(value) => new Date(value).toLocaleDateString()}
+                          />
+                          <YAxis stroke="rgba(255,255,255,0.7)" fontSize={12} />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "rgba(0, 0, 0, 0.8)",
+                              border: "1px solid rgba(255, 255, 255, 0.2)",
+                              borderRadius: "8px",
+                              color: "white",
+                            }}
+                            labelFormatter={(value) => new Date(value).toLocaleDateString()}
+                          />
+                          <Bar dataKey="count" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center text-gray-400">
+                      No feedback trends available
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Trends Tab */}
+          <TabsContent value="trends" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Sentiment Trends */}
+              <Card className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md border border-white/20">
+                <CardHeader>
+                  <CardTitle className="text-white">Sentiment Over Time</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {analytics.sentimentTrends.length > 0 ? (
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={analytics.sentimentTrends}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                          <XAxis
+                            dataKey="date"
+                            stroke="rgba(255,255,255,0.7)"
+                            fontSize={12}
+                            tickFormatter={(value) => new Date(value).toLocaleDateString()}
+                          />
+                          <YAxis stroke="rgba(255,255,255,0.7)" fontSize={12} domain={[0, 1]} />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "rgba(0, 0, 0, 0.8)",
+                              border: "1px solid rgba(255, 255, 255, 0.2)",
+                              borderRadius: "8px",
+                              color: "white",
+                            }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="averageScore"
+                            stroke="#10B981"
+                            strokeWidth={3}
+                            dot={{ fill: "#10B981", strokeWidth: 2, r: 4 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center text-gray-400">
+                      No sentiment trends available
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Sentiment Heatmap */}
+              <SentimentHeatmap data={analytics.sentimentTrends} />
+            </div>
+
+            {/* Word Cloud */}
+            <WordCloud keywords={analytics.aiInsights.topKeywords} />
+          </TabsContent>
+
+          {/* AI Insights Tab */}
+          <TabsContent value="insights">
             <AiInsights analytics={analytics} />
-            <WordCloud analytics={analytics} />
-          </div>
-        </TabsContent>
+          </TabsContent>
 
-        <TabsContent value="performance" className="mt-6">
-          <Card className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 backdrop-blur-md border border-purple-700/30 text-white">
-            <CardHeader>
-              <CardTitle className="text-xl font-bold text-white">Form Performance Comparison</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={analytics.formPerformance}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                  <XAxis dataKey="title" stroke="#ccc" />
-                  <YAxis stroke="#ccc" />
-                  <Tooltip
-                    contentStyle={{ background: "#333", border: "none", borderRadius: "8px" }}
-                    itemStyle={{ color: "#fff" }}
-                  />
-                  <Legend />
-                  <Bar dataKey="totalFeedback" fill="#8884d8" name="Total Feedback" />
-                  <Bar dataKey="averageSentimentScore" fill="#82ca9d" name="Avg. Sentiment Score" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+          {/* Performance Tab */}
+          <TabsContent value="performance" className="space-y-6">
+            <Card className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md border border-white/20">
+              <CardHeader>
+                <CardTitle className="text-white">Form Performance</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {analytics.formPerformance.length > 0 ? (
+                  <div className="space-y-4">
+                    {analytics.formPerformance.map((form) => (
+                      <div
+                        key={form.id}
+                        className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-white/10"
+                      >
+                        <div>
+                          <h3 className="font-semibold text-white">{form.title}</h3>
+                          <p className="text-sm text-gray-400">{form.totalFeedback} responses</p>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold text-white">
+                            {(form.averageSentimentScore * 5).toFixed(1)}/5
+                          </div>
+                          <Badge
+                            variant={
+                              form.averageSentimentScore > 0.6
+                                ? "default"
+                                : form.averageSentimentScore > 0.4
+                                  ? "secondary"
+                                  : "destructive"
+                            }
+                            className="text-xs"
+                          >
+                            {form.averageSentimentScore > 0.6
+                              ? "Positive"
+                              : form.averageSentimentScore > 0.4
+                                ? "Neutral"
+                                : "Negative"}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center text-gray-400 py-8">No form performance data available</div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
 
-      <ExportModal
-        isOpen={isExportModalOpen}
-        onClose={() => {
-          setIsExportModalOpen(false)
-          // Reset any state in the modal if needed
-        }}
-        formId={selectedFormId !== "all" ? selectedFormId : undefined}
-        formUrl={currentFormUrl}
-      />
+      {/* Export Modal */}
+      {showExportModal && (
+        <ExportModal
+          isOpen={showExportModal}
+          onClose={() => setShowExportModal(false)}
+          analytics={analytics}
+          selectedForm={selectedForm}
+        />
+      )}
     </div>
   )
 }

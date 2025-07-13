@@ -1,85 +1,75 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "../auth/[...nextauth]/route"
 import clientPromise from "@/lib/mongodb"
-import { sanitizeObject } from "@/lib/security"
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    console.log("Feedback API: Received data:", body)
+    const feedbackData = await request.json()
+    const db = (await clientPromise).db("feedbackpro")
+    const feedbackCollection = db.collection("feedback")
 
-    const { formId, responses, userId, timestamp } = body
-
-    // Validate required fields
-    if (!formId || !responses || !userId) {
-      console.error("Feedback API: Missing required fields:", { formId, responses, userId })
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    const feedback = {
+      ...feedbackData,
+      id: `feedback_${Date.now()}`,
+      submittedAt: new Date(),
     }
 
-    // Sanitize the input data
-    const sanitizedResponses = sanitizeObject(responses)
-    console.log("Feedback API: Sanitized responses:", sanitizedResponses)
+    await feedbackCollection.insertOne(feedback)
 
-    const client = await clientPromise
-    const db = client.db("feedbackpro")
-    const feedback = db.collection("feedback")
-
-    // Create feedback document
-    const feedbackDoc = {
-      id: `feedback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      formId,
-      responses: sanitizedResponses,
-      userId, // This is the form owner's userId
-      submittedAt: new Date(timestamp || new Date()),
-      createdAt: new Date(),
-      ipAddress: request.headers.get("x-forwarded-for") || request.ip || "unknown",
-      userAgent: request.headers.get("user-agent") || "unknown",
-    }
-
-    console.log("Feedback API: Inserting feedback:", feedbackDoc)
-
-    const result = await feedback.insertOne(feedbackDoc)
-    console.log("Feedback API: Insert result:", result)
-
-    if (result.acknowledged) {
-      return NextResponse.json({
-        success: true,
-        message: "Feedback submitted successfully",
-        feedbackId: feedbackDoc.id,
-      })
-    } else {
-      throw new Error("Failed to insert feedback")
-    }
+    return NextResponse.json({ success: true, id: feedback.id })
   } catch (error) {
-    console.error("Feedback API: Error submitting feedback:", error)
-    return NextResponse.json({ error: "Failed to submit feedback. Please try again." }, { status: 500 })
+    console.error("Error submitting feedback:", error)
+    return NextResponse.json({ error: "Failed to submit feedback" }, { status: 500 })
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get("userId")
     const formId = searchParams.get("formId")
 
-    if (!userId) {
-      return NextResponse.json({ error: "User ID is required" }, { status: 400 })
-    }
+    const db = (await clientPromise).db("feedbackpro")
+    const feedbackCollection = db.collection("feedback")
 
-    const client = await clientPromise
-    const db = client.db("feedbackpro")
-    const feedback = db.collection("feedback")
+    const query: any = {}
 
-    const query: any = { userId }
+    // If formId is provided, filter by formId
     if (formId) {
       query.formId = formId
     }
 
-    const feedbackList = await feedback.find(query).sort({ createdAt: -1 }).limit(100).toArray()
+    // If userId is provided, get forms owned by this user first
+    if (userId) {
+      const formsCollection = db.collection("forms")
+      const userForms = await formsCollection.find({ userId }).toArray()
+      const userFormIds = userForms.map((form) => form.id)
+
+      if (formId) {
+        // Check if the requested form belongs to the user
+        if (!userFormIds.includes(formId)) {
+          return NextResponse.json({ error: "Form not found or access denied" }, { status: 404 })
+        }
+      } else {
+        // Get feedback for all user's forms
+        query.formId = { $in: userFormIds }
+      }
+    }
+
+    const feedback = await feedbackCollection.find(query).sort({ submittedAt: -1 }).toArray()
+    const count = await feedbackCollection.countDocuments(query)
 
     return NextResponse.json({
-      success: true,
-      feedback: feedbackList,
-      count: feedbackList.length,
+      feedback,
+      count,
+      total: count,
     })
   } catch (error) {
     console.error("Error fetching feedback:", error)

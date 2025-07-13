@@ -60,7 +60,33 @@ export default function FormsPage() {
       const response = await fetch("/api/forms")
       if (response.ok) {
         const data = await response.json()
-        setForms(data)
+
+        // Fetch feedback count for each form
+        const formsWithCounts = await Promise.all(
+          data.map(async (form: Form) => {
+            try {
+              // Updated API call to get feedback count for specific form
+              const feedbackResponse = await fetch(`/api/feedback/count?formId=${form.id}`)
+              if (feedbackResponse.ok) {
+                const feedbackData = await feedbackResponse.json()
+                console.log(`Form ${form.id} feedback count:`, feedbackData.count)
+                return {
+                  ...form,
+                  responses: feedbackData.count || 0,
+                }
+              } else {
+                console.error(`Failed to fetch feedback count for form ${form.id}`)
+                return { ...form, responses: 0 }
+              }
+            } catch (error) {
+              console.error(`Error fetching feedback count for form ${form.id}:`, error)
+              return { ...form, responses: 0 }
+            }
+          }),
+        )
+
+        console.log("Forms with updated counts:", formsWithCounts)
+        setForms(formsWithCounts)
       } else {
         toast.error("Failed to fetch forms")
       }

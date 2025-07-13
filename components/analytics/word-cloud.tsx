@@ -1,94 +1,109 @@
 "use client"
 
-import { useEffect, useRef } from "react"
-import * as d3 from "d3"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tag } from "lucide-react"
-import type { AnalyticsData } from "@/lib/types"
+import { Badge } from "@/components/ui/badge"
+import { Hash, TrendingUp } from "lucide-react"
 
 interface WordCloudProps {
-  analytics: AnalyticsData
+  keywords: string[]
 }
 
-export function WordCloud({ analytics }: WordCloudProps) {
-  const svgRef = useRef<SVGSVGElement | null>(null)
-  const { aiInsights } = analytics
+export function WordCloud({ keywords }: WordCloudProps) {
+  if (!keywords || keywords.length === 0) {
+    return (
+      <Card className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md border border-white/20">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            <Hash className="h-5 w-5 text-blue-400" />
+            Word Cloud
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center text-gray-400 py-8">
+            <Hash className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>No keywords available yet. More feedback needed for word cloud analysis.</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
-  useEffect(() => {
-    if (!aiInsights || !aiInsights.topKeywords || aiInsights.topKeywords.length === 0) {
-      // Clear SVG if no data
-      d3.select(svgRef.current).selectAll("*").remove()
-      return
-    }
+  // Calculate word frequencies and sizes
+  const wordFrequency: { [key: string]: number } = {}
+  keywords.forEach((keyword) => {
+    wordFrequency[keyword] = (wordFrequency[keyword] || 0) + 1
+  })
 
-    const words = aiInsights.topKeywords.map((keyword, index) => ({
-      text: keyword,
-      size: 20 + (aiInsights.topKeywords.length - index) * 5, // Larger for earlier keywords
-      x: Math.random() * 400 + 50, // Random x position
-      y: Math.random() * 200 + 50, // Random y position
-    }))
+  const sortedWords = Object.entries(wordFrequency)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 20)
 
-    const width = 500
-    const height = 300
+  const maxFreq = Math.max(...Object.values(wordFrequency))
 
-    const svg = d3
-      .select(svgRef.current)
-      .attr("width", width)
-      .attr("height", height)
-      .attr("viewBox", `0 0 ${width} ${height}`)
-      .attr("preserveAspectRatio", "xMidYMid meet")
-      .style("background-color", "transparent")
+  const getWordSize = (frequency: number) => {
+    const ratio = frequency / maxFreq
+    if (ratio > 0.8) return "text-3xl"
+    if (ratio > 0.6) return "text-2xl"
+    if (ratio > 0.4) return "text-xl"
+    if (ratio > 0.2) return "text-lg"
+    return "text-base"
+  }
 
-    // Clear previous content
-    svg.selectAll("*").remove()
-
-    // Create a simple word cloud layout
-    const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
-
-    svg
-      .selectAll("text")
-      .data(words)
-      .enter()
-      .append("text")
-      .style("font-size", (d) => `${d.size}px`)
-      .style("font-family", "Arial, sans-serif")
-      .style("font-weight", "bold")
-      .style("fill", (d, i) => colorScale(i.toString()))
-      .attr("text-anchor", "middle")
-      .attr("x", (d) => d.x)
-      .attr("y", (d) => d.y)
-      .text((d) => d.text)
-      .style("opacity", 0)
-      .transition()
-      .duration(1000)
-      .delay((d, i) => i * 100)
-      .style("opacity", 1)
-      .attr("transform", (d) => `translate(0, 0)`)
-
-    // Add hover effects
-    svg
-      .selectAll("text")
-      .on("mouseover", function (event, d) {
-        d3.select(this).transition().duration(200).style("opacity", 0.7).attr("transform", "scale(1.2)")
-      })
-      .on("mouseout", function (event, d) {
-        d3.select(this).transition().duration(200).style("opacity", 1).attr("transform", "scale(1)")
-      })
-  }, [aiInsights])
+  const getWordColor = (frequency: number) => {
+    const ratio = frequency / maxFreq
+    if (ratio > 0.8) return "text-blue-300"
+    if (ratio > 0.6) return "text-purple-300"
+    if (ratio > 0.4) return "text-green-300"
+    if (ratio > 0.2) return "text-yellow-300"
+    return "text-gray-300"
+  }
 
   return (
-    <Card className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 backdrop-blur-md border border-purple-700/30 text-white">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-2xl font-bold text-white flex items-center gap-2">
-          <Tag className="h-6 w-6 text-purple-400" /> Keyword Cloud
+    <Card className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md border border-white/20">
+      <CardHeader>
+        <CardTitle className="text-white flex items-center gap-2">
+          <Hash className="h-5 w-5 text-blue-400" />
+          Word Cloud
+          <Badge variant="secondary" className="ml-2 bg-blue-500/20 text-blue-300">
+            {sortedWords.length} keywords
+          </Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex items-center justify-center h-[300px]">
-        {aiInsights.topKeywords && aiInsights.topKeywords.length > 0 ? (
-          <svg ref={svgRef} className="w-full h-full"></svg>
-        ) : (
-          <p className="text-gray-400">No keywords available yet. Submit more feedback!</p>
-        )}
+      <CardContent>
+        <div className="flex flex-wrap gap-3 justify-center items-center min-h-[200px] p-4">
+          {sortedWords.map(([word, frequency], index) => (
+            <div
+              key={word}
+              className={`
+                ${getWordSize(frequency)} 
+                ${getWordColor(frequency)} 
+                font-semibold 
+                hover:scale-110 
+                transition-transform 
+                cursor-pointer
+                px-2 py-1 
+                rounded-lg 
+                bg-white/5 
+                border 
+                border-white/10
+                hover:bg-white/10
+              `}
+              style={{
+                transform: `rotate(${((index % 3) - 1) * 5}deg)`,
+              }}
+              title={`Appears ${frequency} time${frequency > 1 ? "s" : ""}`}
+            >
+              {word}
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-white/10">
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <TrendingUp className="h-4 w-4" />
+            <span>Word size indicates frequency in feedback</span>
+          </div>
+        </div>
       </CardContent>
     </Card>
   )

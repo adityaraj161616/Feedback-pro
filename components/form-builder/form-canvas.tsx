@@ -1,9 +1,9 @@
 "use client"
 
 import { useRef } from "react"
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers"
+// import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
+// import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
+// import { restrictToVerticalAxis } from "@dnd-kit/modifiers"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Trash2, GripVertical, Settings, Star } from "lucide-react"
 import type { FormConfig, FormField } from "@/app/form-builder/page"
-import { useSortable } from "@dnd-kit/sortable"
+// import { useSortable } from "@dnd-kit/sortable"
 
 interface FormCanvasProps {
   formConfig: FormConfig
@@ -33,18 +33,18 @@ export function FormCanvas({
   onUpdateFormConfig, // Destructure the new prop
 }: FormCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor))
+  // const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor))
 
-  const handleDragEnd = (event: any) => {
-    const { active, over } = event
+  // const handleDragEnd = (event: any) => {
+  //   const { active, over } = event
 
-    if (active.id !== over.id) {
-      const oldIndex = formConfig.fields.findIndex((field) => field.id === active.id)
-      const newIndex = formConfig.fields.findIndex((field) => field.id === over.id)
+  //   if (active.id !== over.id) {
+  //     const oldIndex = formConfig.fields.findIndex((field) => field.id === active.id)
+  //     const newIndex = formConfig.fields.findIndex((field) => field.id === over.id)
 
-      onReorderFields(oldIndex, newIndex)
-    }
-  }
+  //     onReorderFields(oldIndex, newIndex)
+  //   }
+  // }
 
   const renderField = (field: FormField) => {
     const isSelected = selectedField === field.id
@@ -83,29 +83,29 @@ export function FormCanvas({
       </Card>
 
       {/* Form Fields */}
-      <DndContext
+      {/* <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
         modifiers={[restrictToVerticalAxis]}
       >
-        <SortableContext items={formConfig.fields.map((f) => f.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-4">
-            {formConfig.fields.length === 0 ? (
-              <Card className="bg-white/5 border-white/10 border-dashed">
-                <CardContent className="p-12 text-center">
-                  <div className="text-gray-400 text-lg mb-2">No fields added yet</div>
-                  <div className="text-gray-500 text-sm">
-                    Add fields from the palette on the left to start building your form
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              formConfig.fields.map(renderField)
-            )}
-          </div>
-        </SortableContext>
-      </DndContext>
+        <SortableContext items={formConfig.fields.map((f) => f.id)} strategy={verticalListSortingStrategy}> */}
+      <div className="space-y-4">
+        {formConfig.fields.length === 0 ? (
+          <Card className="bg-white/5 border-white/10 border-dashed">
+            <CardContent className="p-12 text-center">
+              <div className="text-gray-400 text-lg mb-2">No fields added yet</div>
+              <div className="text-gray-500 text-sm">
+                Add fields from the palette on the left to start building your form
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          formConfig.fields.map(renderField)
+        )}
+      </div>
+      {/* </SortableContext>
+      </DndContext> */}
     </div>
   )
 }
@@ -123,15 +123,15 @@ function SortableFieldItem({
   onUpdate: (updates: Partial<FormField>) => void
   onDelete: () => void
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: field.id,
-  })
+  // const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  //   id: field.id,
+  // })
 
-  const style = {
-    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  }
+  // const style = {
+  //   transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+  //   transition,
+  //   opacity: isDragging ? 0.5 : 1,
+  // }
 
   const renderFieldPreview = () => {
     switch (field.type) {
@@ -195,25 +195,19 @@ function SortableFieldItem({
 
   return (
     <Card
-      ref={setNodeRef}
-      style={style}
       data-field-id={field.id}
-      className={`group cursor-pointer transition-all duration-200 ${
-        isSelected
-          ? "bg-gradient-to-br from-purple-500/20 to-blue-500/20 border-purple-400"
-          : "bg-white/5 border-white/10 hover:border-white/20"
-      }`}
+      className={`group cursor-pointer transition-all duration-200 ${isSelected
+        ? "bg-gradient-to-br from-purple-500/20 to-blue-500/20 border-purple-400"
+        : "bg-white/5 border-white/10 hover:border-white/20"
+        }`}
       onClick={onSelect}
     >
       <CardContent className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
             <div className="flex items-center space-x-2 mb-2">
-              <button
-                {...attributes}
-                {...listeners}
-                className="text-gray-400 hover:text-white cursor-grab active:cursor-grabbing"
-              >
+              <button className="text-gray-400 hover:text-white cursor-pointer">
+
                 <GripVertical className="h-4 w-4" />
               </button>
               <Input
